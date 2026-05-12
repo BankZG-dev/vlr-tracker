@@ -9,6 +9,7 @@ export async function buildProfileEmbed(
     account: HenrikAccount,
     mmr: HenrikMMRData,
     rating: RatingResult,
+    seasonName?: string,
 ): Promise<EmbedBuilder> {
     const rankIcon = await getRankIcon(mmr.current?.tier?.id ?? 0);
     const currentRank = mmr.current?.tier?.name || 'Unranked';
@@ -42,37 +43,27 @@ export async function buildProfileEmbed(
                 inline: true,
             },
             {
-                name: '\u200B',
-                value: '\u200B',
+                name: '📈 Rating (Last 10)',
+                value: `**${rating.overall}** ${rating.grade}`,
                 inline: true,
             },
             {
-                name: '📊 Season Record',
+                name: `📊 ${seasonName || 'Season'} Record`,
                 value: `**${wins}W** / **${losses}L** (${games} games)\nWin Rate: **${rating.winPercent}%**`,
                 inline: true,
             },
             {
-                name: '📈 Overall Rating',
-                value: `**${rating.grade}** (${rating.overall})`,
-                inline: true,
-            },
-            {
-                name: '\u200B',
-                value: '\u200B',
-                inline: true,
-            },
-            {
-                name: '⚔️ K/D Ratio',
+                name: '⚔️ K/D',
                 value: `**${rating.kd}**`,
                 inline: true,
             },
             {
-                name: '🎯 Headshot %',
+                name: '🎯 HS%',
                 value: `**${rating.hsPercent}%**`,
                 inline: true,
             },
             {
-                name: '💥 DMG/Round',
+                name: '💥 DMG/Rnd',
                 value: `**${rating.dmgPerRound}**`,
                 inline: true,
             },
@@ -81,9 +72,14 @@ export async function buildProfileEmbed(
                 value: `**${rating.acs}**`,
                 inline: true,
             },
+            {
+                name: '🔫 K/Rnd',
+                value: `**${rating.killsPerRound}**`,
+                inline: true,
+            },
         )
         .setTimestamp()
-        .setFooter({ text: 'VLR Track • Powered by HenrikDev API' });
+        .setFooter({ text: `VLR Track • ${seasonName || 'Current Season'} Stats` });
 
     if (rankIcon) {
         embed.setThumbnail(rankIcon);
@@ -126,7 +122,7 @@ export async function buildMatchListEmbed(
         const acs = Math.round(player.stats.score / totalRounds);
         const kda = `${player.stats.kills}/${player.stats.deaths}/${player.stats.assists}`;
 
-        const mapName = match.metadata.map.name;
+        const mapName = match.metadata.map;
         const agentName = player.agent.name;
 
         matchLines.push(
@@ -137,7 +133,7 @@ export async function buildMatchListEmbed(
         options.push({
             label: `${resultText} — ${mapName} (${teamWon}-${teamLost})`,
             description: `${agentName} • ${kda} • ${acs} ACS`,
-            value: `match_${match.metadata.match_id}_${i}`,
+            value: `match_${match.metadata.matchid}_${i}`,
         });
     }
 
@@ -164,7 +160,7 @@ export async function buildMatchDetailEmbed(
     match: HenrikMatchData,
     highlightPuuid?: string
 ): Promise<EmbedBuilder[]> {
-    const mapName = match.metadata.map.name;
+    const mapName = match.metadata.map;
     const teams = match.teams;
     const totalRounds = match.teams.red.rounds_won + match.teams.blue.rounds_won || 1;
 
@@ -213,7 +209,7 @@ export async function buildMatchDetailEmbed(
             const kda = `${player.stats.kills}/${player.stats.deaths}/${player.stats.assists}`;
             const totalShots = player.stats.headshots + player.stats.bodyshots + player.stats.legshots;
             const hs = totalShots > 0 ? Math.round((player.stats.headshots / totalShots) * 100) : 0;
-            const dmg = Math.round(player.stats.damage.dealt / totalRounds);
+            const dmg = Math.round(player.damage_made / totalRounds);
 
             const isHighlighted = player.puuid === highlightPuuid;
             const prefix = isHighlighted ? '**▸ ' : '  ';
@@ -370,20 +366,20 @@ export function buildHelpEmbed(): EmbedBuilder {
         .setDescription('Your personal Valorant stats tracker and store checker.')
         .addFields(
             {
-                name: '📊 `/stats [name] [tag]`',
-                value: 'View ranked stats, current rank, K/D, HS%, ACS, and overall rating.\nIf no name is given, uses your registered default account.',
+                name: '📊 `/stats [player]`',
+                value: 'View ranked stats, current rank, K/D, HS%, ACS, and VLR-style rating.\n`/stats player:Uncle Hope#diff` or just `/stats` if registered.',
             },
             {
-                name: '📋 `/matches [name] [tag]`',
-                value: 'View last 10 ranked matches with interactive scoreboard viewer.',
+                name: '📋 `/matches [player]`',
+                value: 'View last 5 ranked matches with interactive scoreboard viewer.\n`/matches player:Uncle Hope#diff` or just `/matches` if registered.',
             },
             {
                 name: '🔑 `/register`',
-                value: 'Link your Riot account to view your store. Opens a secure login form.',
+                value: 'Link your Riot account via secure browser login. Opens a link to Riot\'s official login page.',
             },
             {
-                name: '🛒 `/store [account]`',
-                value: 'View your daily store rotation, featured bundle, and night market.\nRequires `/register` first.',
+                name: '🛒 `/store`',
+                value: 'View your daily store with skin images, featured bundle, and night market.\nRequires `/register` first.',
             },
             {
                 name: '📋 `/accounts`',

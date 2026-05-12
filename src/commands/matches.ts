@@ -9,37 +9,31 @@ const matchCache = new Map<string, HenrikMatchData[]>();
 
 export const data = new SlashCommandBuilder()
     .setName('matches')
-    .setDescription('View your last 10 ranked matches')
+    .setDescription('View your last 5 ranked matches')
     .addStringOption(option =>
-        option.setName('name')
-            .setDescription('Riot Name (e.g. PlayerName)')
+        option.setName('player')
+            .setDescription('In-game Name#Tag (e.g. Uncle Hope#diff)')
             .setRequired(false)
-    )
-    .addStringOption(option =>
-        option.setName('tag')
-            .setDescription('Riot Tag (e.g. NA1)')
-            .setRequired(false)
-    )
-    .addStringOption(option =>
-        option.setName('region')
-            .setDescription('Region')
-            .setRequired(false)
-            .addChoices(
-                { name: 'Asia Pacific', value: 'ap' },
-                { name: 'Europe', value: 'eu' },
-                { name: 'North America', value: 'na' },
-                { name: 'Korea', value: 'kr' },
-                { name: 'Latin America', value: 'latam' },
-                { name: 'Brazil', value: 'br' },
-            )
     );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    let name = interaction.options.getString('name');
-    let tag = interaction.options.getString('tag');
-    let region = interaction.options.getString('region') || 'ap';
+    const playerInput = interaction.options.getString('player');
+    let name: string | null = null;
+    let tag: string | null = null;
+    let region = 'ap';
 
-    if (!name || !tag) {
+    if (playerInput) {
+        const parts = playerInput.split('#');
+        if (parts.length < 2 || !parts[0].trim() || !parts[1].trim()) {
+            await interaction.reply({
+                content: '❌ Please use the format `Name#Tag` (e.g. `Uncle Hope#diff`)',
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
+        name = parts[0].trim();
+        tag = parts[1].trim();
+    } else {
         const account = getDefaultAccount(interaction.user.id);
         if (account) {
             name = account.riot_username;
@@ -47,7 +41,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             region = account.region;
         } else {
             await interaction.reply({
-                content: '❌ Please provide a name and tag, or register an account first with `/register`.',
+                content: '❌ No player specified. Either:\n' +
+                    '• `/matches player:Uncle Hope#diff`\n' +
+                    '• Or register your account first with `/register`',
                 flags: MessageFlags.Ephemeral,
             });
             return;
@@ -57,7 +53,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     await interaction.deferReply();
 
     try {
-        const matches = await getMatches(region, name, tag, 10);
+        const matches = await getMatches(region, name, tag, 5);
 
         if (matches.length === 0) {
             await interaction.editReply({ content: '❌ No competitive matches found for this player.' });
@@ -106,12 +102,12 @@ export async function handleMatchSelect(interaction: StringSelectMenuInteraction
         // Search through cache
         for (const [, matches] of matchCache) {
             const found = matches[index];
-            if (found && found.metadata.match_id === matchId) {
+            if (found && found.metadata.matchid === matchId) {
                 matchData = found;
                 break;
             }
             // Also search by match_id
-            const byId = matches.find(m => m.metadata.match_id === matchId);
+            const byId = matches.find(m => m.metadata.matchid === matchId);
             if (byId) {
                 matchData = byId;
                 break;

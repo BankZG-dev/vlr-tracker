@@ -35,6 +35,7 @@ export async function getStorefront(
                 'X-Riot-Entitlements-JWT': entitlementToken,
                 'X-Riot-ClientPlatform': CLIENT_PLATFORM,
                 'X-Riot-ClientVersion': clientVersion,
+                'Content-Type': 'application/json',
             },
         }
     );

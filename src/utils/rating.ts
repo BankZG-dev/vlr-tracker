@@ -1,24 +1,29 @@
 /**
- * Custom "Overall Rating" calculation.
+ * VLR.gg-style Rating Calculation
  * 
- * Formula:
- *   ACS = score / rounds_played
- *   KD  = kills / deaths
- *   HS% = headshots / total_shots (0-1)
- *   DMG/Round = damage / rounds_played
- *   Win% = wins / total_games (0-1)
+ * The real VLR rating uses round-by-round context (player differential, 
+ * economy, trades) which requires granular round data we don't have.
  * 
- *   Rating = (ACS * 0.35) + (KD * 100 * 0.25) + (HS% * 100 * 0.15) + (DMG/Round * 0.15) + (Win% * 100 * 0.10)
+ * This is an approximation that produces similar 0.5-1.5 scale ratings
+ * based on publicly available per-match stats:
  * 
- * Scale:
- *   S+ = 280+   | S = 240-279 | A+ = 210-239 | A = 180-209
- *   B+ = 150-179 | B = 120-149 | C = 90-119   | D = 60-89 | F = 0-59
+ *   Components (all per-round):
+ *     - Kill contribution:     kills_per_round * 0.33
+ *     - Survival contribution: (1 - deaths_per_round) * 0.20
+ *     - Damage contribution:   (damage_per_round / 150) * 0.28
+ *     - Assist contribution:   assists_per_round * 0.10
+ *     - HS contribution:       hs_percent * 0.09
+ * 
+ *   Average performance = 1.0 rating
+ *   Top fraggers typically get 1.3-1.5
+ *   Struggling players drop to 0.5-0.7
  */
 
 export interface RatingInput {
     score: number;
     kills: number;
     deaths: number;
+    assists: number;
     headshots: number;
     bodyshots: number;
     legshots: number;
@@ -29,13 +34,15 @@ export interface RatingInput {
 }
 
 export interface RatingResult {
-    overall: number;
-    grade: string;
+    overall: number;   // VLR-style 0.0-2.0 scale
+    grade: string;     // Letter grade
     acs: number;
     kd: number;
     hsPercent: number;
     dmgPerRound: number;
     winPercent: number;
+    killsPerRound: number;
+    assistsPerRound: number;
 }
 
 export function calculateRating(input: RatingInput): RatingResult {
@@ -49,34 +56,49 @@ export function calculateRating(input: RatingInput): RatingResult {
     const hsPercent = totalShots > 0 ? input.headshots / totalShots : 0;
     const dmgPerRound = input.damage / roundsPlayed;
     const winPercent = input.wins / totalGames;
+    const killsPerRound = input.kills / roundsPlayed;
+    const deathsPerRound = input.deaths / roundsPlayed;
+    const assistsPerRound = (input.assists ?? 0) / roundsPlayed;
 
-    const overall =
-        (acs * 0.35) +
-        (kd * 100 * 0.25) +
-        (hsPercent * 100 * 0.15) +
-        (dmgPerRound * 0.15) +
-        (winPercent * 100 * 0.10);
+    // VLR-style rating components (tuned to hover around 1.0 for average play)
+    const killComponent = killsPerRound * 0.33 / 0.20;        // avg ~0.8 kills/round -> 1.32
+    const survivalComponent = (1 - Math.min(deathsPerRound, 1)) * 0.20 / 0.15; // survive bonus
+    const damageComponent = (dmgPerRound / 150) * 0.28 / 0.28; // 150 dmg/round = average
+    const assistComponent = assistsPerRound * 0.10 / 0.04;     // avg ~0.2 assists/round
+    const hsComponent = hsPercent * 0.09 / 0.07;               // 25% HS = average
+
+    // Weighted sum, calibrated so average performance ≈ 1.0
+    const rawRating = (killComponent * 0.33) +
+                      (survivalComponent * 0.20) +
+                      (damageComponent * 0.28) +
+                      (assistComponent * 0.10) +
+                      (hsComponent * 0.09);
+
+    // Clamp to reasonable range
+    const rating = Math.max(0, Math.min(2.5, rawRating));
 
     return {
-        overall: Math.round(overall * 10) / 10,
-        grade: getGrade(overall),
+        overall: Math.round(rating * 100) / 100,
+        grade: getGrade(rating),
         acs: Math.round(acs * 10) / 10,
         kd: Math.round(kd * 100) / 100,
         hsPercent: Math.round(hsPercent * 1000) / 10,
         dmgPerRound: Math.round(dmgPerRound * 10) / 10,
         winPercent: Math.round(winPercent * 1000) / 10,
+        killsPerRound: Math.round(killsPerRound * 100) / 100,
+        assistsPerRound: Math.round(assistsPerRound * 100) / 100,
     };
 }
 
 function getGrade(rating: number): string {
-    if (rating >= 280) return 'S+';
-    if (rating >= 240) return 'S';
-    if (rating >= 210) return 'A+';
-    if (rating >= 180) return 'A';
-    if (rating >= 150) return 'B+';
-    if (rating >= 120) return 'B';
-    if (rating >= 90) return 'C';
-    if (rating >= 60) return 'D';
+    if (rating >= 1.40) return 'S+';
+    if (rating >= 1.25) return 'S';
+    if (rating >= 1.15) return 'A+';
+    if (rating >= 1.05) return 'A';
+    if (rating >= 0.95) return 'B+';
+    if (rating >= 0.85) return 'B';
+    if (rating >= 0.70) return 'C';
+    if (rating >= 0.50) return 'D';
     return 'F';
 }
 

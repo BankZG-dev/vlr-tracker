@@ -8,36 +8,31 @@ export const data = new SlashCommandBuilder()
     .setName('stats')
     .setDescription('View Valorant ranked stats for a player')
     .addStringOption(option =>
-        option.setName('name')
-            .setDescription('Riot Name (e.g. PlayerName)')
+        option.setName('player')
+            .setDescription('In-game Name#Tag (e.g. Uncle Hope#diff)')
             .setRequired(false)
-    )
-    .addStringOption(option =>
-        option.setName('tag')
-            .setDescription('Riot Tag (e.g. NA1)')
-            .setRequired(false)
-    )
-    .addStringOption(option =>
-        option.setName('region')
-            .setDescription('Region')
-            .setRequired(false)
-            .addChoices(
-                { name: 'Asia Pacific', value: 'ap' },
-                { name: 'Europe', value: 'eu' },
-                { name: 'North America', value: 'na' },
-                { name: 'Korea', value: 'kr' },
-                { name: 'Latin America', value: 'latam' },
-                { name: 'Brazil', value: 'br' },
-            )
     );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    let name = interaction.options.getString('name');
-    let tag = interaction.options.getString('tag');
-    let region = interaction.options.getString('region') || 'ap';
+    const playerInput = interaction.options.getString('player');
+    let name: string | null = null;
+    let tag: string | null = null;
+    let region = 'ap';
 
-    // If no name/tag, try to use registered default
-    if (!name || !tag) {
+    if (playerInput) {
+        // Parse "Name#Tag" format
+        const parts = playerInput.split('#');
+        if (parts.length < 2 || !parts[0].trim() || !parts[1].trim()) {
+            await interaction.reply({
+                content: '❌ Please use the format `Name#Tag` (e.g. `Uncle Hope#diff`)',
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
+        name = parts[0].trim();
+        tag = parts[1].trim();
+    } else {
+        // No input = use registered default account
         const account = getDefaultAccount(interaction.user.id);
         if (account) {
             name = account.riot_username;
@@ -45,7 +40,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
             region = account.region;
         } else {
             await interaction.reply({
-                content: '❌ Please provide a name and tag, or register an account first with `/register`.',
+                content: '❌ No player specified. Either:\n' +
+                    '• `/stats player:Uncle Hope#diff`\n' +
+                    '• Or register your account first with `/register` to use `/stats` without arguments.',
                 flags: MessageFlags.Ephemeral,
             });
             return;
@@ -62,10 +59,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         // Fetch MMR data
         const mmrData = await getMMR(region, name, tag);
 
-        // Fetch last 10 competitive matches for rating calculation
+        // Get current season info from MMR data
         const currentSeason = mmrData.seasonal?.[mmrData.seasonal.length - 1];
+        const seasonName = currentSeason?.season?.short || 'Unknown';
+        // Convert season short (e.g. "e11a3") to readable format (e.g. "Episode 11 Act 3")
+        const seasonDisplay = formatSeasonName(seasonName);
+
         let ratingInput: RatingInput = {
-            score: 0, kills: 0, deaths: 0,
+            score: 0, kills: 0, deaths: 0, assists: 0,
             headshots: 0, bodyshots: 0, legshots: 0,
             damage: 0, roundsPlayed: 0,
             wins: currentSeason?.wins ?? 0,
@@ -73,9 +74,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         };
 
         try {
-            const matches = await getMatches(region, name, tag, 10);
+            // Fetch more matches and filter to current season only
+            const totalGames = currentSeason?.games ?? 10;
+            const fetchSize = Math.min(totalGames, 20); // Fetch up to 20 matches
+            const matches = await getMatches(region, name, tag, fetchSize);
             
+            // Get the season_id from the most recent match to identify current season
+            const currentSeasonId = matches.length > 0 ? matches[0].metadata.season_id : null;
+
             for (const match of matches) {
+                // Only include matches from the current season
+                if (currentSeasonId && match.metadata.season_id !== currentSeasonId) continue;
+
                 const player = match.players.all_players.find(p =>
                     p.name.toLowerCase() === name!.toLowerCase() &&
                     p.tag.toLowerCase() === tag!.toLowerCase()
@@ -86,10 +96,11 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
                 ratingInput.score += player.stats.score;
                 ratingInput.kills += player.stats.kills;
                 ratingInput.deaths += player.stats.deaths;
+                ratingInput.assists += player.stats.assists;
                 ratingInput.headshots += player.stats.headshots;
                 ratingInput.bodyshots += player.stats.bodyshots;
                 ratingInput.legshots += player.stats.legshots;
-                ratingInput.damage += player.stats.damage.dealt;
+                ratingInput.damage += player.damage_made;
                 ratingInput.roundsPlayed += totalRounds;
             }
         } catch (e) {
@@ -98,14 +109,24 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         }
 
         const rating = calculateRating(ratingInput);
-        const embed = await buildProfileEmbed(accountInfo, mmrData, rating);
+        const embed = await buildProfileEmbed(accountInfo, mmrData, rating, seasonDisplay);
 
         await interaction.editReply({ embeds: [embed] });
     } catch (error: any) {
         console.error('Stats error:', error);
         await interaction.editReply({
             content: `❌ **Error fetching stats:** ${error.message || 'Unknown error'}\n` +
-                `Make sure the name and tag are correct (e.g. \`/stats name:PlayerName tag:NA1\`)`,
+                `Make sure you use the correct **in-game name and tag** (e.g. \`Uncle Hope#diff\`), not your login username.`,
         });
     }
+}
+
+/** Convert season short code to readable format */
+function formatSeasonName(short: string): string {
+    // e.g. "e11a3" -> "Episode 11 Act 3"
+    const match = short.match(/e(\d+)a(\d+)/);
+    if (match) {
+        return `Episode ${match[1]} Act ${match[2]}`;
+    }
+    return short;
 }

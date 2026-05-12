@@ -57,22 +57,20 @@ export interface ActRankWin {
 
 export interface HenrikMatchData {
     metadata: {
-        match_id: string;
-        map: {
-            id: string;
-            name: string;
-        };
+        map: string;
+        game_version: string;
+        game_length: number;
         game_start: number;
         game_start_patched: string;
-        game_length_in_ms: number;
+        rounds_played: number;
+        mode: string;
+        mode_id: string;
+        queue: string;
+        season_id: string;
+        platform: string;
+        matchid: string;
         region: string;
-        queue: {
-            id: string;
-            name: string;
-        };
-        season: {
-            short: string;
-        };
+        cluster: string;
     };
     players: {
         all_players: MatchPlayer[];
@@ -107,11 +105,9 @@ export interface MatchPlayer {
         headshots: number;
         bodyshots: number;
         legshots: number;
-        damage: {
-            dealt: number;
-            received: number;
-        };
     };
+    damage_made: number;
+    damage_received: number;
     ability_casts: {
         grenade: number;
         ability1: number;
