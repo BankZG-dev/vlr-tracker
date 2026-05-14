@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { getAccount, getMMR, getMatches } from '../api/henrik';
+import { getMatchCountByPuuid } from '../api/riot-match';
 import { buildProfileEmbed } from '../utils/embeds';
 import { calculateRating, RatingInput } from '../utils/rating';
 import { getDefaultAccount } from '../db/database';
@@ -65,18 +66,25 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
         // Convert season short (e.g. "e11a3") to readable format (e.g. "Episode 11 Act 3")
         const seasonDisplay = formatSeasonName(seasonName);
 
+        let riotSeasonMatchCount: number | undefined;
+        try {
+            riotSeasonMatchCount = await getMatchCountByPuuid(region, accountInfo.puuid);
+        } catch (e) {
+            console.warn('Could not fetch Riot match count:', e);
+        }
+
         let ratingInput: RatingInput = {
             score: 0, kills: 0, deaths: 0, assists: 0,
             headshots: 0, bodyshots: 0, legshots: 0,
             damage: 0, roundsPlayed: 0,
             wins: currentSeason?.wins ?? 0,
-            totalGames: currentSeason?.games ?? 0,
+            totalGames: currentSeason?.games ?? riotSeasonMatchCount ?? 0,
         };
 
         try {
-            // Fetch more matches and filter to current season only
-            const totalGames = currentSeason?.games ?? 10;
-            const fetchSize = Math.min(totalGames, 20); // Fetch up to 20 matches
+            // Fetch matches from the current season only
+            const totalGames = currentSeason?.games ?? riotSeasonMatchCount ?? 10;
+            const fetchSize = totalGames; // Ask Henrik for all current-season matches when possible
             const matches = await getMatches(region, name, tag, fetchSize);
             
             // Get the season_id from the most recent match to identify current season

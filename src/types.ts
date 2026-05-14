@@ -140,6 +140,17 @@ export interface MatchRound {
     winning_team: string;
 }
 
+export interface RiotMatchlistDto {
+    puuid: string;
+    history: RiotMatchlistEntryDto[];
+}
+
+export interface RiotMatchlistEntryDto {
+    matchId: string;
+    gameStartTimeMillis: number;
+    queueId: string;
+}
+
 // ─── Riot Internal Auth Types ───
 
 export interface RiotAuthTokens {
@@ -289,6 +300,16 @@ export const REGION_TO_SHARD: Record<string, string> = {
     ap: 'ap',
     kr: 'kr',
     pbe: 'pbe',
+};
+
+export const REGION_TO_RIOT_ROUTING: Record<string, string> = {
+    na: 'americas',
+    latam: 'americas',
+    br: 'americas',
+    eu: 'europe',
+    ap: 'asia',
+    kr: 'asia',
+    pbe: 'americas',
 };
 
 export const SHARD_LIST = ['na', 'eu', 'ap', 'kr', 'pbe'] as const;

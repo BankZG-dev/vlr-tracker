@@ -43,7 +43,7 @@ export async function buildProfileEmbed(
                 inline: true,
             },
             {
-                name: '📈 Rating (Last 10)',
+                name: '📈 Rating',
                 value: `**${rating.overall}** ${rating.grade}`,
                 inline: true,
             },
